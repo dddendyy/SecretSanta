@@ -167,15 +167,32 @@ async def show_rooms_list(user_id):
     db = sqlite.connect(DATABASE)
     cursor = db.cursor()
 
-    sql = cursor.execute('SELECT name, admin FROM Rooms WHERE instr (members, :user_id)',
+    sql = cursor.execute('SELECT name, admin, member_count, room_id, desc FROM Rooms WHERE instr (members, :user_id)',
                          {'user_id': user_id}).fetchall()
 
     db.close()
 
     for i in sql:
         if i[1] == str(user_id):
-            rooms_list.append(i[0] + ' 👑')
+            rooms_list.append(f'Название: {i[0]} 👑\n0/{i[2]} человек участвуют\nОписание: {i[4]}\nКод для подключения: {i[3]}')
         else:
-            rooms_list.append(i[0])
+            rooms_list.append(f'Название: {i[0]} \n0/{i[2]} человек участвуют\nОписание: {i[4]}\nКод для подключения: {i[3]}')
 
     return rooms_list
+
+
+async def delete_room(room_id):
+    '''
+    Удаление комнаты по id
+    '''
+    db = sqlite.connect(DATABASE)
+    cursor = db.cursor()
+
+    sql = cursor.execute('SELECT * FROM Rooms WHERE room_id = :room_id', {'room_id': room_id}).fetchone()
+
+    if sql:
+        cursor.execute('DELETE FROM Rooms WHERE room_id = :room_id', {'room_id': room_id})
+
+    db.commit()
+    db.close()
+

@@ -281,14 +281,59 @@ async def connect_cmd(message: types.Message, state=FSMContext):
 
 @dp.message_handler(text='Мои комнаты 👥')
 async def my_rooms(message: types.Message):
-    my_rooms = await database.show_rooms_list(message.from_id)
 
+    my_rooms = await database.show_rooms_list(message.from_id)
     await message.answer('Ты состоишь в следующих комнатах 👇')
 
     for room in my_rooms:
-        await message.answer(room)
+        if '👑' in room:
+            delete_keyboard = InlineKeyboardMarkup()
+            delete_button = InlineKeyboardButton(text='Удалить комнату',
+                                                 callback_data=f'delete {room[-5:]}')
+            delete_keyboard.add(delete_button)
+            await message.answer(text=room,
+                                 reply_markup=delete_keyboard)
+        else:
+            await message.answer(room)
 
 
+@dp.callback_query_handler(F.data.contains('delete'))
+async def delete_room(callback: types.CallbackQuery):
+    # await database.delete_room(callback.data[-5:])
+    confirm_keyboard = InlineKeyboardMarkup()
+    agree_button = InlineKeyboardButton(text='Да',
+                                        callback_data=f'confirm_{callback.data[-5:]}')
+    disagree_button = InlineKeyboardButton(text='Нет',
+                                        callback_data=f'refuse_{callback.data[-5:]}')
+    confirm_keyboard.add(agree_button, disagree_button)
+    await bot.answer_callback_query(callback_query_id=callback.id,
+                                    text='Удаление комнаты')
+    await callback.message.edit_text(f'{callback.message.text}\n'
+                                     f'----------------------------------------------\n'
+                                     f'<b>Вы уверены, что хотите удалить данную комнату?</b>',
+                                     reply_markup=confirm_keyboard,
+                                     parse_mode=types.ParseMode.HTML)
+
+
+@dp.callback_query_handler(F.data.contains('confirm'))
+async def confirm_delete(callback: types.CallbackQuery):
+    await database.delete_room(callback.data[-5:])
+    await bot.answer_callback_query(callback_query_id=callback.id,
+                                    text='Комната удалена')
+    await callback.message.delete()
+
+
+@dp.callback_query_handler(F.data.contains('refuse'))
+async def refuse_delete(callback: types.CallbackQuery):
+    await callback.message.edit_text(callback.message.text[:-93])
+    await bot.answer_callback_query(callback_query_id=callback.id,
+                                    text='Удаление отменено')
+    delete_keyboard = InlineKeyboardMarkup()
+    delete_button = InlineKeyboardButton(text='Удалить комнату',
+                                         callback_data=f'delete {callback.message.text[-5:]}')
+    delete_keyboard.add(delete_button)
+    await callback.message.edit_text(text=callback.message.text[:-93],
+                                     reply_markup=delete_keyboard)
 if __name__ == '__main__':
     executor.start_polling(dp,
                            skip_updates=True,
