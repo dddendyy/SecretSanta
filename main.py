@@ -217,11 +217,14 @@ async def name_room(message: types.Message, state: FSMContext):
     '''
     async with state.proxy() as data:
         data['room_name'] = message.text
-    await message.answer('Теперь введи количество игроков (тоже двузначное число, пожалуйста)')
+    await message.answer('Теперь введи количество игроков (не менее 6-ти игроков)')
     await Room.next()
 
 
-@dp.message_handler(F.text.isdigit() & (F.text.len() <= 2),
+@dp.message_handler(lambda message: message.text.isdigit() == True
+                                     and int(message.text) >= 6
+                                     and int(message.text) % 2 == 0
+                                     and len(message.text) <= 2,
                     state=Room.member_count)
 async def member_count(message: types.Message, state: FSMContext):
     '''
@@ -233,6 +236,20 @@ async def member_count(message: types.Message, state: FSMContext):
     await message.answer('Замечательно! А теперь нам нужно описание этой комнаты!\n'
                          'Это увидят те, кто сюда подключится 🙋‍♂️')
     await Room.next()
+
+
+@dp.message_handler(lambda message: message.text.isdigit() != True
+                                     or int(message.text) < 6
+                                     or int(message.text) % 2 != 0
+                                     or len(message.text) > 2,
+                    state=Room.member_count)
+async def error_member_count(message: types.Message):
+    '''
+    обработчик дибила(зачеркнуто) некорректного ввода от пользователя
+    '''
+    await message.answer('Количество игроков должно быть чётным числом не менее 6-ти!')
+    await bot.send_sticker(chat_id=message.from_user.id,
+                     sticker='CAACAgQAAxkBAAJHEmXx7XCoC3w4OzkhnY400Nh8R8spAAIJCAACJBZZUj94r2NSYLEVNAQ')
 
 
 @dp.message_handler(state=Room.desc)
@@ -299,7 +316,6 @@ async def my_rooms(message: types.Message):
 
 @dp.callback_query_handler(F.data.contains('delete'))
 async def delete_room(callback: types.CallbackQuery):
-    # await database.delete_room(callback.data[-5:])
     confirm_keyboard = InlineKeyboardMarkup()
     agree_button = InlineKeyboardButton(text='Да',
                                         callback_data=f'confirm_{callback.data[-5:]}')
@@ -334,6 +350,8 @@ async def refuse_delete(callback: types.CallbackQuery):
     delete_keyboard.add(delete_button)
     await callback.message.edit_text(text=callback.message.text[:-93],
                                      reply_markup=delete_keyboard)
+
+
 if __name__ == '__main__':
     executor.start_polling(dp,
                            skip_updates=True,
