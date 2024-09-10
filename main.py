@@ -164,6 +164,7 @@ async def desc_cmd(message: types.Message, state: FSMContext):
     '''
     async with state.proxy() as data:
         data['desc'] = message.text
+        data['username'] = message.from_user.username
 
     await database.update_profile(message.from_user.id, state)
     await message.answer('Профиль создан, чтобы посмотреть, нажми <b>"Мой профиль 👤"</b>',
@@ -196,8 +197,9 @@ async def show_profile(message: types.Message):
                                  parse_mode=types.ParseMode.HTML)
             return
 
-    await message.answer(text=f"{profile['name']} {profile['surname']}, пол: {profile['sex']}\n"
-                              f"Возраст: {profile['age']}\n"
+    await message.answer(text=f"{profile['name']} {profile['surname']}, \n"
+                              f"пол: {profile['sex']} \n"
+                              f"Возраст: {profile['age']} \n"
                               f"{profile['desc']}")
 
 
@@ -261,7 +263,7 @@ async def room_desc(message: types.Message, state: FSMContext):
         data['room_desc'] = message.text
 
     async with state.proxy() as data:
-        data['room_id'] = await database.create_room(state, message.from_user.id)
+        data['room_id'] = await database.create_room(state, message.from_user.id, message.from_user.username)
 
     await message.answer('Круто! Группа создана 🎉\n'
                          f'Код для подключения: {data["room_id"]}.'
@@ -282,10 +284,14 @@ async def join_room(message: types.Message):
 @dp.message_handler(state=Connect.code)
 async def connect_cmd(message: types.Message, state=FSMContext):
 
-    room = await database.join_room(message.text, message.from_user.id)
+    room = await database.join_room(message.text, message.from_user.username)
 
     if room is None:
         await message.answer('Такой комнаты не существует. Введи код повторно ⚠')
+
+    elif room is False:
+        await message.answer('Достигнут лимит пользователей в комнате!')
+        await state.finish()
 
     elif room is True:
         await message.answer('Ты уже поключен к этой комнате')
@@ -299,7 +305,7 @@ async def connect_cmd(message: types.Message, state=FSMContext):
 @dp.message_handler(text='Мои комнаты 👥')
 async def my_rooms(message: types.Message):
 
-    my_rooms = await database.show_rooms_list(message.from_id)
+    my_rooms = await database.show_rooms_list(message.from_user.username, message.from_user.id)
     await message.answer('Ты состоишь в следующих комнатах 👇')
 
     for room in my_rooms:

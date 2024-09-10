@@ -21,6 +21,7 @@ async def start():
     cursor.execute('''
     CREATE TABLE IF NOT EXISTS Members(
     member_id TEXT PRIMARY KEY,
+    username TEXT,
     name TEXT,
     sex TEXT,
     age INTEGER, 
@@ -51,7 +52,7 @@ async def create_profile(user_id):
     sql = cursor.execute('SELECT * FROM members WHERE member_id = :user_id', {'user_id': user_id}).fetchone()
 
     if not sql:
-        cursor.execute('INSERT INTO members VALUES (?, ?, ?, ?, ?, ?)', (user_id, '', '', '', 0, ''))
+        cursor.execute('INSERT INTO members VALUES (?, ?, ?, ?, ?, ?, ?)', (user_id, '', '', '', '', 0, ''))
         db.commit()
 
     db.close()
@@ -65,8 +66,8 @@ async def update_profile(user_id, state):
     cursor = db.cursor()
 
     async with state.proxy() as data:
-        cursor.execute('UPDATE members SET name = ?, surname = ?, sex = ?, age = ?, desc = ? WHERE member_id = ?',
-                       (data['name'], data['surname'], data['sex'], data['age'], data['desc'], user_id))
+        cursor.execute('UPDATE members SET name = ?, surname = ?, sex = ?, age = ?, desc = ?, username = ? WHERE member_id = ?',
+                       (data['name'], data['surname'], data['sex'], data['age'], data['desc'], data['username'], user_id))
         db.commit()
 
     db.close()
@@ -80,7 +81,7 @@ async def show_profile(user_id):
     db = sqlite.connect(DATABASE)
     cursor = db.cursor()
 
-    result = ['member_id', 'name', 'surname', 'sex', 'age', 'desc'] # список с ключами
+    result = ['member_id', 'username', 'name', 'surname', 'sex', 'age', 'desc'] # список с ключами
 
     sql = cursor.execute('SELECT * FROM members WHERE member_id = :user_id', {'user_id': user_id}).fetchone()
 
@@ -95,7 +96,7 @@ async def show_profile(user_id):
 
     return profile
 
-async def create_room(state, user_id):
+async def create_room(state, user_id, username):
     '''
     Создадим комнату с её уникальным номером
     Уникальным номером выступит набор из 5 цифр, сгенерированных с помощью цикла и random.choice()
@@ -121,7 +122,7 @@ async def create_room(state, user_id):
         if not sql: # если такой комнаты нет, то создаём(4)
             async with state.proxy() as data:
                 cursor.execute('INSERT INTO Rooms VALUES (?, ?, ?, ?, ?, ?)',
-                               (room_id, data['room_name'], data['member_count'], user_id, data['room_desc'], user_id))
+                               (room_id, data['room_name'], data['member_count'], user_id, data['room_desc'], username))
             db.commit() # СОХРАНЯЕМ!!!! СУКА ЧАС НЕ МОГ ПОНЯТЬ ПОЧЕМУ НЕ СОХРАНЯЕТСЯ!!!!!!!!!
             return room_id
         else:
@@ -130,7 +131,7 @@ async def create_room(state, user_id):
 # ЕБУЧИЙ db.commit()!!! УХ НАМУЧИЛСЯ
 
 
-async def join_room(room_id, user_id):
+async def join_room(room_id, username):
     '''
     Здесь мы будем получать инфу о комнате и добавлять игрока к комнате с помощью UPDATE
     1. Проверяем наличие комнаты с помощью SELECT -> 2. Ищем пользователя по ID ->
@@ -149,11 +150,16 @@ async def join_room(room_id, user_id):
 
     room = dict(zip(result, sql))
 
-    if str(user_id) in room['members']:
+    if str(username) in room['members']:
         db.close()
         return True
+
+    elif len(room['members'].split(' ')) >= room['member_count']:
+        db.close()
+        return False
+
     else:
-        new_member = room['members'] + f' {str(user_id)}'
+        new_member = room['members'] + f' {str(username)}'
         cursor.execute('UPDATE Rooms SET members = :new_member WHERE room_id = :room_id',
                        {'new_member': new_member, 'room_id': room_id})
         db.commit()
@@ -162,13 +168,13 @@ async def join_room(room_id, user_id):
 
     return room
 
-async def show_rooms_list(user_id):
+async def show_rooms_list(username, user_id):
     rooms_list = []
     db = sqlite.connect(DATABASE)
     cursor = db.cursor()
 
-    sql = cursor.execute('SELECT name, admin, member_count, room_id, desc, members FROM Rooms WHERE instr (members, :user_id)',
-                         {'user_id': user_id}).fetchall()
+    sql = cursor.execute('SELECT name, admin, member_count, room_id, desc, members FROM Rooms WHERE instr (members, :username)',
+                         {'username': username}).fetchall()
 
     db.close()
 
