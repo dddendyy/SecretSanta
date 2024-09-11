@@ -1,6 +1,7 @@
 import sqlite3 as sqlite
+import random
 from config import DATABASE
-from random import choice
+from copy import deepcopy
 
 async def start():
 
@@ -95,6 +96,32 @@ async def show_profile(user_id):
     # ииии приводим к словарю функцией dict
 
     return profile
+
+
+async def get_profile(username):
+    '''
+    С помощью dict(zip()) возвращаем словарь из ключей (ими будут поля БД)
+    и значений - ими будут результаты запроса SELECT
+    Нужно для отправки сообщения при обработке шафла (перемешка игроков, т.е. кто-кому дарит)
+    '''
+    db = sqlite.connect(DATABASE)
+    cursor = db.cursor()
+
+    result = ['member_id', 'username', 'name', 'surname', 'sex', 'age', 'desc'] # список с ключами
+
+    sql = cursor.execute('SELECT * FROM members WHERE username = :username', {'username': username}).fetchone()
+
+    if not sql: # если запрос ничего не вернул, то функция вернёт None
+        return None
+
+    db.commit()
+    db.close()
+
+    profile = dict(zip(result, sql)) # теперь с помощью zip объеденяем словарь из ключей с результатом запроса
+    # ииии приводим к словарю функцией dict
+
+    return profile
+
 
 async def create_room(state, user_id, username):
     '''
@@ -202,3 +229,30 @@ async def delete_room(room_id):
     db.commit()
     db.close()
 
+
+async def shuffle_players(room_id):
+    '''
+    Тут будем перемешивать игроков
+    Получаем список игроков по комнате > сплитуем > перемешиваем
+    '''
+    db = sqlite.connect(DATABASE)
+    cursor = db.cursor()
+
+    sql = cursor.execute('SELECT members FROM Rooms where room_id = :room_id', {'room_id': room_id}).fetchone()[0]
+
+    players_list = sql.split(' ') # делаем сплит, чтобы получить список из игроков
+    players_list_copy = deepcopy(players_list)
+    shuffled_players_dict = dict.fromkeys(players_list)
+    
+    used_values = []
+
+    for num in shuffled_players_dict.keys():
+        # Чтобы исключить текущее значение ключа из выбора
+        available_values = [value for value in players_list_copy if value != num]
+        random_player = random.choice(available_values)
+        shuffled_players_dict[num] = random_player
+        players_list_copy.remove(random_player)  # Удаляем использованное значение
+
+    db.close()
+
+    return shuffled_players_dict

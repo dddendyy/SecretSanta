@@ -242,14 +242,13 @@ async def member_count(message: types.Message, state: FSMContext):
 
 @dp.message_handler(lambda message: message.text.isdigit() != True
                                      or int(message.text) < 6
-                                     or int(message.text) % 2 != 0
                                      or len(message.text) > 2,
                     state=Room.member_count)
 async def error_member_count(message: types.Message):
     '''
     обработчик дибила(зачеркнуто) некорректного ввода от пользователя
     '''
-    await message.answer('Количество игроков должно быть чётным числом не менее 6-ти!')
+    await message.answer('Количество игроков должно быть не менее 6-ти!')
     await bot.send_sticker(chat_id=message.from_user.id,
                      sticker='CAACAgQAAxkBAAJHEmXx7XCoC3w4OzkhnY400Nh8R8spAAIJCAACJBZZUj94r2NSYLEVNAQ')
 
@@ -310,12 +309,14 @@ async def my_rooms(message: types.Message):
 
     for room in my_rooms:
         if '👑' in room:
-            delete_keyboard = InlineKeyboardMarkup()
+            admin_keyboard = InlineKeyboardMarkup()
             delete_button = InlineKeyboardButton(text='Удалить комнату',
                                                  callback_data=f'delete {room[-5:]}')
-            delete_keyboard.add(delete_button)
+            shuffle_button = InlineKeyboardButton(text='Перемешать игроков',
+                                                 callback_data=f'shuffle {room[-5:]}')
+            admin_keyboard.add(delete_button, shuffle_button)
             await message.answer(text=room,
-                                 reply_markup=delete_keyboard)
+                                 reply_markup=admin_keyboard)
         else:
             await message.answer(room)
 
@@ -350,13 +351,35 @@ async def refuse_delete(callback: types.CallbackQuery):
     await callback.message.edit_text(callback.message.text[:-93])
     await bot.answer_callback_query(callback_query_id=callback.id,
                                     text='Удаление отменено')
-    delete_keyboard = InlineKeyboardMarkup()
+    admin_keyboard = InlineKeyboardMarkup()
     delete_button = InlineKeyboardButton(text='Удалить комнату',
-                                         callback_data=f'delete {callback.message.text[-5:]}')
-    delete_keyboard.add(delete_button)
+                                         callback_data=f'delete {room[-5:]}')
+    shuffle_button = InlineKeyboardButton(text='Перемешать игроков',
+                                          callback_data=f'shuffle {room[-5:]}')
+    admin_keyboard.add(delete_button, shuffle_button)
     await callback.message.edit_text(text=callback.message.text[:-93],
-                                     reply_markup=delete_keyboard)
+                                     reply_markup=admin_keyboard)
 
+
+@dp.callback_query_handler(F.data.contains('shuffle'))
+async def shuffle_room(callback: types.CallbackQuery):
+    shuffled_players_dict = await database.shuffle_players(callback.data[-5:]) # получаем перемешанных распределенных игроков
+    await bot.answer_callback_query(callback_query_id=callback.id,
+                                    text='Игроки перемешаны')
+
+    for username in shuffled_players_dict:
+        # проходимся по ним
+        player = await database.get_profile(username) # получаем игрока, которому отправляем сообщение
+        opponent = await database.get_profile(shuffled_players_dict[player['username']]) # и про которого отправляем
+        # ну и само сообщение
+        await bot.send_message(chat_id=player['member_id'],
+                               text='Привет! 👋\n'
+                                    'Это бот для игры в Тайного Санту 🎅\n'
+                                    'Администратор комнаты, в которой ты состоишь, начал игру.'
+                                    ' Теперь тебе нужно подарить подарок человек, чью анкетку ты видишь ниже 🎁\n'
+                                    f'{opponent["name"]} {opponent["surname"]}\n'
+                                    f'Возраст: {opponent["age"]}\n'
+                                    f'{opponent["desc"]}')
 
 if __name__ == '__main__':
     executor.start_polling(dp,
