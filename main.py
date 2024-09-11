@@ -348,24 +348,59 @@ async def confirm_delete(callback: types.CallbackQuery):
 
 @dp.callback_query_handler(F.data.contains('refuse'))
 async def refuse_delete(callback: types.CallbackQuery):
-    await callback.message.edit_text(callback.message.text[:-93])
+    # await callback.message.edit_text(callback.message.text[:-93])
     await bot.answer_callback_query(callback_query_id=callback.id,
                                     text='Удаление отменено')
     admin_keyboard = InlineKeyboardMarkup()
     delete_button = InlineKeyboardButton(text='Удалить комнату',
-                                         callback_data=f'delete {room[-5:]}')
+                                         callback_data=f'delete {callback.data[-5:]}')
     shuffle_button = InlineKeyboardButton(text='Перемешать игроков',
-                                          callback_data=f'shuffle {room[-5:]}')
+                                          callback_data=f'shuffle {callback.data[-5:]}')
     admin_keyboard.add(delete_button, shuffle_button)
     await callback.message.edit_text(text=callback.message.text[:-93],
                                      reply_markup=admin_keyboard)
 
 
 @dp.callback_query_handler(F.data.contains('shuffle'))
-async def shuffle_room(callback: types.CallbackQuery):
-    shuffled_players_dict = await database.shuffle_players(callback.data[-5:]) # получаем перемешанных распределенных игроков
+async def shuffle_room_confirm(callback: types.CallbackQuery):
+    '''
+    Если админ нажимает на запуск игры, бот спросит подтверждение
+    '''
+    confirm_keyboard = InlineKeyboardMarkup()
+    start_game_button = InlineKeyboardButton(text='Да',
+                                        callback_data=f'start_{callback.data[-5:]}')
+    stop_game_button = InlineKeyboardButton(text='Нет',
+                                           callback_data=f'stop_{callback.data[-5:]}')
+    confirm_keyboard.add(start_game_button, stop_game_button)
+    await bot.answer_callback_query(callback_query_id=callback.id,
+                                    text='АНЯ, ЗАПУСКАЙ')
+    await callback.message.edit_text(f'{callback.message.text}\n'
+                                     f'----------------------------------------------\n'
+                                     f'<b>Вы уверены, что хотите начать ИГРУ?</b>',
+                                     reply_markup=confirm_keyboard,
+                                     parse_mode=types.ParseMode.HTML)
+    await Room.confirm.set()
+
+
+@dp.callback_query_handler(F.data.contains('start'), state=Room.confirm)
+async def shuffle_room(callback: types.CallbackQuery, state: FSMContext):
+    '''
+    Если админ согласен на запуск комнаты
+    '''
+
     await bot.answer_callback_query(callback_query_id=callback.id,
                                     text='Игроки перемешаны')
+    admin_keyboard = InlineKeyboardMarkup()
+    delete_button = InlineKeyboardButton(text='Удалить комнату',
+                                         callback_data=f'delete {callback.data[-5:]}')
+    shuffle_button = InlineKeyboardButton(text='Перемешать игроков',
+                                          callback_data=f'shuffle {callback.data[-5:]}')
+    admin_keyboard.add(delete_button, shuffle_button)
+    await callback.message.edit_text(text=callback.message.text[:-83],
+                                     reply_markup=admin_keyboard)
+
+    shuffled_players_dict = await database.shuffle_players(callback.data[-5:]) # получаем перемешанных распределенных игроков
+
 
     for username in shuffled_players_dict:
         # проходимся по ним
@@ -380,6 +415,10 @@ async def shuffle_room(callback: types.CallbackQuery):
                                     f'{opponent["name"]} {opponent["surname"]}\n'
                                     f'Возраст: {opponent["age"]}\n'
                                     f'{opponent["desc"]}')
+
+
+
+        await state.finish()
 
 if __name__ == '__main__':
     executor.start_polling(dp,
