@@ -225,7 +225,6 @@ async def name_room(message: types.Message, state: FSMContext):
 
 @dp.message_handler(lambda message: message.text.isdigit() == True
                                      and int(message.text) >= 6
-                                     and int(message.text) % 2 == 0
                                      and len(message.text) <= 2,
                     state=Room.member_count)
 async def member_count(message: types.Message, state: FSMContext):
@@ -308,7 +307,8 @@ async def my_rooms(message: types.Message):
     await message.answer('Ты состоишь в следующих комнатах 👇')
 
     for room in my_rooms:
-        if str(message.from_user.id) == room["admin"] and room["state"] != "запущена":
+        if str(message.from_user.id) == room["admin"] and room["state"] != "запущена": # если админ 
+
             room_text = f'''Название: {room["room_name"]} 👑
 {len(room["members"].split(" "))}/{room["member_count"]} участвуют
 Описание: {room["desc"]}
@@ -316,17 +316,16 @@ async def my_rooms(message: types.Message):
 Код для подключения: {room["room_id"]}'''
             
             admin_keyboard = InlineKeyboardMarkup()
-            delete_button = InlineKeyboardButton(text='Удалить комнату',
-                                                 callback_data=f'delete {room["room_id"]}')
-            shuffle_button = InlineKeyboardButton(text='Начать игру',
-                                                 callback_data=f'shuffle {room["room_id"]}')
+            delete_button = InlineKeyboardButton(text='Удалить комнату', callback_data=f'delete {room["room_id"]}')
+            shuffle_button = InlineKeyboardButton(text='Начать игру', callback_data=f'shuffle {room["room_id"]}')
             admin_keyboard.add(delete_button, shuffle_button)
 
             await bot.send_message(chat_id=message.from_user.id,
                                    text=room_text,
                                    reply_markup=admin_keyboard)
             
-        elif str(message.from_user.id) == room["admin"] and room["state"] == "запущена":
+        elif str(message.from_user.id) == room["admin"] and room["state"] == "запущена": # если админ, но комната запущена 
+
             room_text = f'''Название: {room["room_name"]} 👑
 {len(room["members"].split(" "))}/{room["member_count"]} участвуют
 Описание: {room["desc"]}
@@ -335,15 +334,26 @@ async def my_rooms(message: types.Message):
             await bot.send_message(chat_id=message.from_user.id,
                                    text=room_text)
             
-        elif str(message.from_user.id) != room["admin"]:
+        elif str(message.from_user.id) != room["admin"]: # если не админ 
+
             room_text = room_text = f'''Название: {room["room_name"]} 
 {len(room["members"].split(" "))}/{room["member_count"]} участвуют
 Описание: {room["desc"]}
 Игра {room["state"]}
 Код для подключения: {room["room_id"]}'''
+            
+            exit_keyboard = InlineKeyboardMarkup()
+            exit_button = InlineKeyboardButton(text='Покинуть комнату', callback_data=f'exit {room["room_id"]}')
+            exit_keyboard.add(exit_button)
             await bot.send_message(chat_id=message.from_user.id,
-                                   text=room_text)
+                                   text=room_text,
+                                   reply_markup=exit_keyboard)
 
+
+@dp.callback_query_handler(F.data.contains('exit'))
+async def exit_room_confirm(callback: types.CallbackQuery, state: FSMContext):
+    '''Обрабатываем попытку выхода из комнаты'''
+    pass
 
 @dp.callback_query_handler(F.data.contains('delete'))
 async def delete_room(callback: types.CallbackQuery):
