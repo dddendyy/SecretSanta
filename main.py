@@ -434,22 +434,47 @@ async def shuffle_room(callback: types.CallbackQuery, state: FSMContext):
     await callback.message.edit_text(text=new_room_text,
                                      reply_markup=admin_keyboard)
 
-    # for username in shuffled_players_dict:
-    #     # проходимся по ним
-    #     player = await database.get_profile(username) # получаем игрока, которому отправляем сообщение
-    #     opponent = await database.get_profile(shuffled_players_dict[player['username']]) # и про которого отправляем
-    #     # ну и само сообщение
-    #     await bot.send_message(chat_id=player['member_id'],
-    #                            text='Привет! 👋\n'
-    #                                 'Это бот для игры в Тайного Санту 🎅\n'
-    #                                 'Администратор комнаты, в которой ты состоишь, начал игру.'
-    #                                 ' Теперь тебе нужно подарить подарок человек, чью анкетку ты видишь ниже 🎁\n'
-    #                                 f'{opponent["name"]} {opponent["surname"]}\n'
-    #                                 f'Возраст: {opponent["age"]}\n'
-    #                                 f'{opponent["desc"]}')
+    for username in shuffled_players_dict:
+        # проходимся по ним
+        player = await database.get_profile(username) # получаем игрока, которому отправляем сообщение
+        opponent = await database.get_profile(shuffled_players_dict[player['username']]) # и про которого отправляем
+        # ну и само сообщение
+        await bot.send_message(chat_id=player['member_id'],
+                               text='Привет! 👋\n'
+                                    'Это бот для игры в Тайного Санту 🎅\n'
+                                    'Администратор комнаты, в которой ты состоишь, начал игру.'
+                                    ' Теперь тебе нужно подарить подарок человек, чью анкетку ты видишь ниже 🎁\n'
+                                    f'{opponent["name"]} {opponent["surname"]}\n'
+                                    f'Возраст: {opponent["age"]}\n'
+                                    f'{opponent["desc"]}')
 
     await state.finish()
 
+
+@dp.callback_query_handler(F.data.contains('stop'), state=Room.confirm)
+async def stop_shuffle_room(callback: types.CallbackQuery, state: FSMContext):
+    '''
+    Если админ НЕ согласен на запуск комнаты
+    '''
+    await callback.message.answer
+
+    new_room = await database.get_room(callback.data[-5:])
+    new_room_text = f'''Название: {new_room["room_name"]} 👑
+{len(new_room["members"].split(" "))}/{new_room["member_count"]} участвуют
+Описание: {new_room["desc"]}
+Игра {new_room["state"]}
+Код для подключения: {new_room["room_id"]}'''
+
+    admin_keyboard = InlineKeyboardMarkup()
+    delete_button = InlineKeyboardButton(text='Удалить комнату',
+                                         callback_data=f'delete {callback.data[-5:]}')
+    shuffle_button = InlineKeyboardButton(text='Начать игру',
+                                          callback_data=f'shuffle {callback.data[-5:]}')
+    admin_keyboard.add(delete_button, shuffle_button)
+
+    await callback.message.edit_text(text=new_room_text,
+                                     reply_markup=admin_keyboard)
+    await state.finish()
 
 if __name__ == '__main__':
     executor.start_polling(dp,
