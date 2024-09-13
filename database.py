@@ -196,27 +196,48 @@ async def join_room(room_id, username):
 
     return room
 
+
 async def show_rooms_list(username, user_id):
     rooms_list = []
+    result = ['room_id', 'room_name', 'member_count', 'admin', 'state', 'desc', 'members']
     db = sqlite.connect(DATABASE)
     cursor = db.cursor()
 
-    sql = cursor.execute('SELECT name, admin, member_count, room_id, desc, members, state FROM Rooms WHERE instr (members, :username)',
+    sql = cursor.execute('SELECT * FROM Rooms WHERE instr (members, :username)',
                          {'username': username}).fetchall()
 
     db.close()
 
-    for i in sql:
-        if i[1] == str(user_id):
-            rooms_list.append(f'Название: {i[0]} 👑\n{len(i[5].split(" "))}/{i[2]} человек участвуют\nОписание: {i[4]}\n'
-                              f'Игра {i[6]}\n'
-                              f'Код для подключения: {i[3]}')
-        else:
-            rooms_list.append(f'Название: {i[0]} \n{len(i[5].split(" "))}/{i[2]} человек участвуют\nОписание: {i[4]}\n'
-                              f'Игра {i[6]}\n'
-                              f'Код для подключения: {i[3]}')
+    for room in sql:
+        rooms_list.append(dict(zip(result, room)))
+
+    # for i in sql:
+    #     if i[1] == str(user_id):
+    #         rooms_list.append(f'Название: {i[0]} 👑\n{len(i[5].split(" "))}/{i[2]} человек участвуют\nОписание: {i[4]}\n'
+    #                           f'Игра {i[6]}\n'
+    #                           f'Код для подключения: {i[3]}')
+    #     else:
+    #         rooms_list.append(f'Название: {i[0]} \n{len(i[5].split(" "))}/{i[2]} человек участвуют\nОписание: {i[4]}\n'
+    #                           f'Игра {i[6]}\n'
+    #                           f'Код для подключения: {i[3]}')
 
     return rooms_list
+
+
+async def get_room(room_id):
+    '''
+    Здесь мы получаем комнату по id,
+    в параметрах принимают room_id из callback.data()
+    '''
+
+    result = ['room_id', 'room_name', 'member_count', 'admin', 'state', 'desc', 'members']
+
+    db = sqlite.connect(DATABASE)
+    cursor = db.cursor()
+
+    sql = cursor.execute('SELECT * FROM Rooms WHERE room_id = :room_id', {'room_id': room_id}).fetchone()
+    
+    return dict(zip(result, sql))
 
 
 async def delete_room(room_id):

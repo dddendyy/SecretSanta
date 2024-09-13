@@ -308,17 +308,41 @@ async def my_rooms(message: types.Message):
     await message.answer('Ты состоишь в следующих комнатах 👇')
 
     for room in my_rooms:
-        if '👑' in room:
+        if str(message.from_user.id) == room["admin"] and room["state"] != "запущена":
+            room_text = f'''Название: {room["room_name"]} 👑
+{len(room["members"].split(" "))}/{room["member_count"]} участвуют
+Описание: {room["desc"]}
+Игра {room["state"]}
+Код для подключения: {room["room_id"]}'''
+            
             admin_keyboard = InlineKeyboardMarkup()
             delete_button = InlineKeyboardButton(text='Удалить комнату',
-                                                 callback_data=f'delete {room[-5:]}')
+                                                 callback_data=f'delete {room["room_id"]}')
             shuffle_button = InlineKeyboardButton(text='Начать игру',
-                                                 callback_data=f'shuffle {room[-5:]}')
+                                                 callback_data=f'shuffle {room["room_id"]}')
             admin_keyboard.add(delete_button, shuffle_button)
-            await message.answer(text=room,
-                                 reply_markup=admin_keyboard)
-        else:
-            await message.answer(room)
+
+            await bot.send_message(chat_id=message.from_user.id,
+                                   text=room_text,
+                                   reply_markup=admin_keyboard)
+            
+        elif str(message.from_user.id) == room["admin"] and room["state"] == "запущена":
+            room_text = f'''Название: {room["room_name"]} 👑
+{len(room["members"].split(" "))}/{room["member_count"]} участвуют
+Описание: {room["desc"]}
+Игра {room["state"]}
+Код для подключения: {room["room_id"]}'''
+            await bot.send_message(chat_id=message.from_user.id,
+                                   text=room_text)
+            
+        elif str(message.from_user.id) != room["admin"]:
+            room_text = room_text = f'''Название: {room["room_name"]} 
+{len(room["members"].split(" "))}/{room["member_count"]} участвуют
+Описание: {room["desc"]}
+Игра {room["state"]}
+Код для подключения: {room["room_id"]}'''
+            await bot.send_message(chat_id=message.from_user.id,
+                                   text=room_text)
 
 
 @dp.callback_query_handler(F.data.contains('delete'))
@@ -387,36 +411,44 @@ async def shuffle_room(callback: types.CallbackQuery, state: FSMContext):
     '''
     Если админ согласен на запуск комнаты
     '''
-    await database.update_state_started(callback.data[-5:])
+    room_id = callback.data[-5:]
+    await database.update_state_started(room_id)
     await bot.answer_callback_query(callback_query_id=callback.id,
                                     text='Игроки перемешаны')
     admin_keyboard = InlineKeyboardMarkup()
     delete_button = InlineKeyboardButton(text='Удалить комнату',
-                                         callback_data=f'delete {callback.data[-5:]}')
-    shuffle_button = InlineKeyboardButton(text='Начать игру',
-                                          callback_data=f'shuffle {callback.data[-5:]}')
-    admin_keyboard.add(delete_button, shuffle_button)
-    await callback.message.edit_text(text=callback.message.text[:-83],
+                                         callback_data=f'delete {room_id}')
+    admin_keyboard.add(delete_button)
+    # await callback.message.edit_text(text=callback.message.text[:-83],
+    #                                  reply_markup=admin_keyboard)
+    
+    shuffled_players_dict = await database.shuffle_players(room_id) # получаем перемешанных распределенных игроков
+    new_room = await database.get_room(room_id)
+
+    new_room_text = f'''Название: {new_room["room_name"]} 👑
+{len(new_room["members"].split(" "))}/{new_room["member_count"]} участвуют
+Описание: {new_room["desc"]}
+Игра {new_room["state"]}
+Код для подключения: {new_room["room_id"]}'''
+
+    await callback.message.edit_text(text=new_room_text,
                                      reply_markup=admin_keyboard)
 
-    shuffled_players_dict = await database.shuffle_players(callback.data[-5:]) # получаем перемешанных распределенных игроков
+    # for username in shuffled_players_dict:
+    #     # проходимся по ним
+    #     player = await database.get_profile(username) # получаем игрока, которому отправляем сообщение
+    #     opponent = await database.get_profile(shuffled_players_dict[player['username']]) # и про которого отправляем
+    #     # ну и само сообщение
+    #     await bot.send_message(chat_id=player['member_id'],
+    #                            text='Привет! 👋\n'
+    #                                 'Это бот для игры в Тайного Санту 🎅\n'
+    #                                 'Администратор комнаты, в которой ты состоишь, начал игру.'
+    #                                 ' Теперь тебе нужно подарить подарок человек, чью анкетку ты видишь ниже 🎁\n'
+    #                                 f'{opponent["name"]} {opponent["surname"]}\n'
+    #                                 f'Возраст: {opponent["age"]}\n'
+    #                                 f'{opponent["desc"]}')
 
-
-    for username in shuffled_players_dict:
-        # проходимся по ним
-        player = await database.get_profile(username) # получаем игрока, которому отправляем сообщение
-        opponent = await database.get_profile(shuffled_players_dict[player['username']]) # и про которого отправляем
-        # ну и само сообщение
-        await bot.send_message(chat_id=player['member_id'],
-                               text='Привет! 👋\n'
-                                    'Это бот для игры в Тайного Санту 🎅\n'
-                                    'Администратор комнаты, в которой ты состоишь, начал игру.'
-                                    ' Теперь тебе нужно подарить подарок человек, чью анкетку ты видишь ниже 🎁\n'
-                                    f'{opponent["name"]} {opponent["surname"]}\n'
-                                    f'Возраст: {opponent["age"]}\n'
-                                    f'{opponent["desc"]}')
-
-        await state.finish()
+    await state.finish()
 
 
 if __name__ == '__main__':
