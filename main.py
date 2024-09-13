@@ -364,6 +364,15 @@ async def delete_room(callback: types.CallbackQuery):
 
 @dp.callback_query_handler(F.data.contains('confirm'))
 async def confirm_delete(callback: types.CallbackQuery):
+    room = await database.get_room(callback.data[-5:])
+    members = room["members"].split(' ')
+    for member in members:
+        profile = await database.get_profile(member)
+        if profile["member_id"] == room["admin"]:
+            continue
+        await bot.send_message(chat_id=profile["member_id"],
+                         text=f'Упс! Кажется админ комнаты под названием <b>{room["room_name"]}</b> удалил её ❌. Игра не будет запущена и в следующий раз ты её не увидишь!',
+                         parse_mode=types.ParseMode.HTML)
     await database.delete_room(callback.data[-5:])
     await bot.answer_callback_query(callback_query_id=callback.id,
                                     text='Комната удалена')
