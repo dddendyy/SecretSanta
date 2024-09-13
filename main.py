@@ -416,8 +416,6 @@ async def shuffle_room(callback: types.CallbackQuery, state: FSMContext):
                                     f'Возраст: {opponent["age"]}\n'
                                     f'{opponent["desc"]}')
 
-
-
         await state.finish()
 
 if __name__ == '__main__':

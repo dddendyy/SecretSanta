@@ -14,6 +14,7 @@ async def start():
     name TEXT,
     member_count INTEGER,
     admin TEXT,
+    state TEXT,
     desc TEXT, 
     members TEXT
     )
@@ -141,15 +142,15 @@ async def create_room(state, user_id, username):
         room_id = '' # будущий ID комнаты (пока что пустой, но скоро будет не пустой)(2)
 
         for i in range(5):
-            room_id += choice(nums) # пять раз берём рандомное значение из списка циферок и вуаля! получаем ID(2)
+            room_id += random.choice(nums) # пять раз берём рандомное значение из списка циферок и вуаля! получаем ID(2)
 
         sql = cursor.execute('SELECT * FROM Rooms WHERE room_id = :room_id',
                              {'room_id': room_id}).fetchone() # запрос для проверки наличия комнаты(3)
 
         if not sql: # если такой комнаты нет, то создаём(4)
             async with state.proxy() as data:
-                cursor.execute('INSERT INTO Rooms VALUES (?, ?, ?, ?, ?, ?)',
-                               (room_id, data['room_name'], data['member_count'], user_id, data['room_desc'], username))
+                cursor.execute('INSERT INTO Rooms VALUES (?, ?, ?, ?, ?, ?, ?)',
+                               (room_id, data['room_name'], data['member_count'], user_id, 'запущена', data['room_desc'], username))
             db.commit() # СОХРАНЯЕМ!!!! СУКА ЧАС НЕ МОГ ПОНЯТЬ ПОЧЕМУ НЕ СОХРАНЯЕТСЯ!!!!!!!!!
             return room_id
         else:
@@ -200,16 +201,20 @@ async def show_rooms_list(username, user_id):
     db = sqlite.connect(DATABASE)
     cursor = db.cursor()
 
-    sql = cursor.execute('SELECT name, admin, member_count, room_id, desc, members FROM Rooms WHERE instr (members, :username)',
+    sql = cursor.execute('SELECT name, admin, member_count, room_id, desc, members, state FROM Rooms WHERE instr (members, :username)',
                          {'username': username}).fetchall()
 
     db.close()
 
     for i in sql:
         if i[1] == str(user_id):
-            rooms_list.append(f'Название: {i[0]} 👑\n{len(i[5].split(" "))}/{i[2]} человек участвуют\nОписание: {i[4]}\nКод для подключения: {i[3]}')
+            rooms_list.append(f'Название: {i[0]} 👑\n{len(i[5].split(" "))}/{i[2]} человек участвуют\nОписание: {i[4]}\n'
+                              f'Игра {i[6]}\n'
+                              f'Код для подключения: {i[3]}')
         else:
-            rooms_list.append(f'Название: {i[0]} \n{len(i[5].split(" "))}/{i[2]} человек участвуют\nОписание: {i[4]}\nКод для подключения: {i[3]}')
+            rooms_list.append(f'Название: {i[0]} \n{len(i[5].split(" "))}/{i[2]} человек участвуют\nОписание: {i[4]}\n'
+                              f'Игра {i[6]}\n'
+                              f'Код для подключения: {i[3]}')
 
     return rooms_list
 
