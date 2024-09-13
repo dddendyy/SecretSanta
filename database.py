@@ -150,7 +150,7 @@ async def create_room(state, user_id, username):
         if not sql: # если такой комнаты нет, то создаём(4)
             async with state.proxy() as data:
                 cursor.execute('INSERT INTO Rooms VALUES (?, ?, ?, ?, ?, ?, ?)',
-                               (room_id, data['room_name'], data['member_count'], user_id, 'запущена', data['room_desc'], username))
+                               (room_id, data['room_name'], data['member_count'], user_id, 'создана', data['room_desc'], username))
             db.commit() # СОХРАНЯЕМ!!!! СУКА ЧАС НЕ МОГ ПОНЯТЬ ПОЧЕМУ НЕ СОХРАНЯЕТСЯ!!!!!!!!!
             return room_id
         else:
@@ -261,3 +261,19 @@ async def shuffle_players(room_id):
     db.close()
 
     return shuffled_players_dict
+
+
+async def update_state_started(room_id):
+    '''
+    У каждой нашей комнаты будет статус: "создана". "запущена", "завершена"
+    Тут мы будем делать запуска
+    '''
+    db = sqlite.connect(DATABASE)
+    cursor = db.cursor()
+
+    sql = cursor.execute('UPDATE Rooms SET state = "запущена" WHERE room_id = :room_id', {'room_id': room_id})
+
+    db.commit()
+    db.close()
+
+    return sql

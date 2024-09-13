@@ -312,7 +312,7 @@ async def my_rooms(message: types.Message):
             admin_keyboard = InlineKeyboardMarkup()
             delete_button = InlineKeyboardButton(text='Удалить комнату',
                                                  callback_data=f'delete {room[-5:]}')
-            shuffle_button = InlineKeyboardButton(text='Перемешать игроков',
+            shuffle_button = InlineKeyboardButton(text='Начать игру',
                                                  callback_data=f'shuffle {room[-5:]}')
             admin_keyboard.add(delete_button, shuffle_button)
             await message.answer(text=room,
@@ -354,7 +354,7 @@ async def refuse_delete(callback: types.CallbackQuery):
     admin_keyboard = InlineKeyboardMarkup()
     delete_button = InlineKeyboardButton(text='Удалить комнату',
                                          callback_data=f'delete {callback.data[-5:]}')
-    shuffle_button = InlineKeyboardButton(text='Перемешать игроков',
+    shuffle_button = InlineKeyboardButton(text='Начать игру',
                                           callback_data=f'shuffle {callback.data[-5:]}')
     admin_keyboard.add(delete_button, shuffle_button)
     await callback.message.edit_text(text=callback.message.text[:-93],
@@ -387,13 +387,13 @@ async def shuffle_room(callback: types.CallbackQuery, state: FSMContext):
     '''
     Если админ согласен на запуск комнаты
     '''
-
+    await database.update_state_started(callback.data[-5:])
     await bot.answer_callback_query(callback_query_id=callback.id,
                                     text='Игроки перемешаны')
     admin_keyboard = InlineKeyboardMarkup()
     delete_button = InlineKeyboardButton(text='Удалить комнату',
                                          callback_data=f'delete {callback.data[-5:]}')
-    shuffle_button = InlineKeyboardButton(text='Перемешать игроков',
+    shuffle_button = InlineKeyboardButton(text='Начать игру',
                                           callback_data=f'shuffle {callback.data[-5:]}')
     admin_keyboard.add(delete_button, shuffle_button)
     await callback.message.edit_text(text=callback.message.text[:-83],
@@ -417,6 +417,7 @@ async def shuffle_room(callback: types.CallbackQuery, state: FSMContext):
                                     f'{opponent["desc"]}')
 
         await state.finish()
+
 
 if __name__ == '__main__':
     executor.start_polling(dp,
