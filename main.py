@@ -185,7 +185,7 @@ async def show_profile(message: types.Message):
     if profile is None:
         await message.answer(text='Упс! Твой профиль не заполнен ☹\n'
                              'Мы можем это исправить! ☝🤓\n'
-                             'Просто нажми <b>Заполнить информаю о себе 📋</b>',
+                             'Просто нажми <b>"Заполнить информаю о себе 📋"</b>',
                              parse_mode=types.ParseMode.HTML)
         return
 
@@ -208,7 +208,12 @@ async def create_room(message: types.Message):
     '''
     Хэндлер, вызывающий процесс создания комнаты
     '''
-    await message.answer('Введи название для своей комнаты')
+    player = await database.get_profile_by_id(message.from_user.id)
+    if player is None or player["username"] == '':
+        await message.answer('Сначала заполни свой профиль через кнопку <b>"Заполнить информаю о себе 📋"</b>',
+                             parse_mode=types.ParseMode.HTML)
+        return
+    await message.answer('Введи название для своей комнаты', reply_markup=stop_keyboard)
     await Room.name.set()
 
 
@@ -219,7 +224,7 @@ async def name_room(message: types.Message, state: FSMContext):
     '''
     async with state.proxy() as data:
         data['room_name'] = message.text
-    await message.answer('Теперь введи количество игроков (не менее 6-ти игроков)')
+    await message.answer('Теперь введи количество игроков (не менее 6-ти игроков)', reply_markup=stop_keyboard)
     await Room.next()
 
 
@@ -235,7 +240,7 @@ async def member_count(message: types.Message, state: FSMContext):
         data['member_count'] = message.text
 
     await message.answer('Замечательно! А теперь нам нужно описание этой комнаты!\n'
-                         'Это увидят те, кто сюда подключится 🙋‍♂️')
+                         'Это увидят те, кто сюда подключится 🙋‍♂️', reply_markup=stop_keyboard)
     await Room.next()
 
 
@@ -274,7 +279,14 @@ async def room_desc(message: types.Message, state: FSMContext):
 
 @dp.message_handler(text='Вступить в комнату ✅')
 async def join_room(message: types.Message):
-    await message.answer('Введи код подключения к комнате!')
+    player = await database.get_profile_by_id(message.from_user.id)
+    if player is None or player["username"] == '':
+
+        await message.answer('Сначала заполни свой профиль через кнопку <b>"Заполнить информаю о себе 📋"</b>',
+                             parse_mode=types.ParseMode.HTML)
+        return
+
+    await message.answer('Введи код подключения к комнате!', reply_markup=stop_keyboard)
     user_input = message.text
     await Connect.code.set()
 
@@ -285,7 +297,7 @@ async def connect_cmd(message: types.Message, state=FSMContext):
     room = await database.join_room(message.text, message.from_user.username, message)
 
     if room is None:
-        await message.answer('Такой комнаты не существует. Введи код повторно ⚠')
+        await message.answer('Такой комнаты не существует. Введи код повторно ⚠', reply_markup=stop_keyboard)
 
     elif room is False:
         await message.answer('Достигнут лимит пользователей в комнате!')
@@ -302,6 +314,12 @@ async def connect_cmd(message: types.Message, state=FSMContext):
 
 @dp.message_handler(text='Мои комнаты 👥')
 async def my_rooms(message: types.Message):
+
+    player = await database.get_profile_by_id(message.from_user.id)
+    if player is None or player["username"] == '':
+        await message.answer('Сначала заполни свой профиль через кнопку <b>"Заполнить информаю о себе 📋"</b>',
+                             parse_mode=types.ParseMode.HTML)
+        return
 
     my_rooms = await database.show_rooms_list(message.from_user.username, message.from_user.id)
     await message.answer('Ты состоишь в следующих комнатах 👇')
