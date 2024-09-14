@@ -75,7 +75,7 @@ async def update_profile(user_id, state):
     db.close()
 
 
-async def show_profile(user_id):
+async def get_profile_by_id(user_id):
     '''
     С помощью dict(zip()) возвращаем словарь из ключей (ими будут поля БД)
     и значений - ими будут результаты запроса SELECT
@@ -99,7 +99,7 @@ async def show_profile(user_id):
     return profile
 
 
-async def get_profile(username):
+async def get_profile_by_username(username):
     '''
     С помощью dict(zip()) возвращаем словарь из ключей (ими будут поля БД)
     и значений - ими будут результаты запроса SELECT
@@ -110,7 +110,7 @@ async def get_profile(username):
 
     result = ['member_id', 'username', 'name', 'surname', 'sex', 'age', 'desc'] # список с ключами
 
-    sql = cursor.execute('SELECT * FROM members WHERE username = :username', {'username': username}).fetchone()
+    sql = cursor.execute('SELECT * FROM Members WHERE username = :username', {'username': username}).fetchone()
 
     if not sql: # если запрос ничего не вернул, то функция вернёт None
         return None
@@ -159,13 +159,13 @@ async def create_room(state, user_id, username):
 # ЕБУЧИЙ db.commit()!!! УХ НАМУЧИЛСЯ
 
 
-async def join_room(room_id, username):
+async def join_room(room_id, username, message):
     '''
     Здесь мы будем получать инфу о комнате и добавлять игрока к комнате с помощью UPDATE
     1. Проверяем наличие комнаты с помощью SELECT -> 2. Ищем пользователя по ID ->
     -> 3. Через UPDATE добавляем его ID в последнюю ячейку комнаты В ней будут храниться ID подключенных игроков.
     '''
-    result = ['room_id', 'room_name', 'member_count', 'admin', 'desc', 'members']
+    result = ['room_id', 'room_name', 'member_count', 'admin', 'state', 'desc', 'members']
 
     db = sqlite.connect(DATABASE)
     cursor = db.cursor()
@@ -211,16 +211,6 @@ async def show_rooms_list(username, user_id):
     for room in sql:
         rooms_list.append(dict(zip(result, room)))
 
-    # for i in sql:
-    #     if i[1] == str(user_id):
-    #         rooms_list.append(f'Название: {i[0]} 👑\n{len(i[5].split(" "))}/{i[2]} человек участвуют\nОписание: {i[4]}\n'
-    #                           f'Игра {i[6]}\n'
-    #                           f'Код для подключения: {i[3]}')
-    #     else:
-    #         rooms_list.append(f'Название: {i[0]} \n{len(i[5].split(" "))}/{i[2]} человек участвуют\nОписание: {i[4]}\n'
-    #                           f'Игра {i[6]}\n'
-    #                           f'Код для подключения: {i[3]}')
-
     return rooms_list
 
 
@@ -238,6 +228,21 @@ async def get_room(room_id):
     sql = cursor.execute('SELECT * FROM Rooms WHERE room_id = :room_id', {'room_id': room_id}).fetchone()
     
     return dict(zip(result, sql))
+
+
+async def delete_member(room_id, members):
+    '''
+    В main мы получаем комнату через get_room, оттуда берём список участников,
+    удаляем нужного участника из списка и закидываем список участников в БД
+    '''
+    db = sqlite.connect(DATABASE)
+    cursor = db.cursor()
+
+    sql = cursor.execute('UPDATE Rooms SET Members = :members WHERE room_id = :room_id',
+                         {'members': members, 'room_id': room_id}).fetchone()
+
+    db.commit()
+    db.close()
 
 
 async def delete_room(room_id):
@@ -280,7 +285,6 @@ async def shuffle_players(room_id):
         players_list_copy.remove(random_player)  # Удаляем использованное значение
 
     db.close()
-
     return shuffled_players_dict
 
 

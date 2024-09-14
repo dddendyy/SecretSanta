@@ -180,7 +180,7 @@ async def show_profile(message: types.Message):
                                                         ^^^^^^^ cм. database.py
     И сразу суём в обработчик исключений, чтобы обработать вызов "пустого" профиля
     '''
-    profile = await database.show_profile(message.from_user.id)
+    profile = await database.get_profile_by_id(message.from_user.id)
 
     if profile is None:
         await message.answer(text='Упс! Твой профиль не заполнен ☹\n'
@@ -282,7 +282,7 @@ async def join_room(message: types.Message):
 @dp.message_handler(state=Connect.code)
 async def connect_cmd(message: types.Message, state=FSMContext):
 
-    room = await database.join_room(message.text, message.from_user.username)
+    room = await database.join_room(message.text, message.from_user.username, message)
 
     if room is None:
         await message.answer('Такой комнаты не существует. Введи код повторно ⚠')
@@ -351,20 +351,58 @@ async def my_rooms(message: types.Message):
 
 
 @dp.callback_query_handler(F.data.contains('exit'))
-async def exit_room_confirm(callback: types.CallbackQuery, state: FSMContext):
+async def exit_room(callback: types.CallbackQuery, state: FSMContext):
     '''Обрабатываем попытку выхода из комнаты'''
-    pass
+    room_id = callback.data[-5:]
+    confirm_keyboard = InlineKeyboardMarkup()
+    agree_button = InlineKeyboardButton(text='Да', callback_data=f' agree_{room_id}')
+    disagree_button = InlineKeyboardButton(text='Нет', callback_data=f'disagree_{room_id}')
+    confirm_keyboard.add(agree_button, disagree_button)
+    async with state.proxy() as data:
+        data["room_text"] = callback.message.text
+    await callback.message.edit_text(f'{callback.message.text}\n'
+                                     f'----------------------------------------------\n'
+                                     f'<b>Вы уверены, что хотите покинуть комнату?</b>',
+                                     reply_markup=confirm_keyboard,
+                                     parse_mode=types.ParseMode.HTML)
+    await Room.exit_confirm.set()
+
+
+@dp.callback_query_handler(F.data.contains(' agree'), state=Room.exit_confirm)
+async def confirm_exit_room(callback: types.CallbackQuery, state: FSMContext):
+    '''Соглашаемся с выходом из комнаты'''
+    room_id = callback.data[-5:]
+    room = await database.get_room(room_id)
+    members_list = room["members"].split(' ')
+    deleted_member = await database.get_profile_by_id(callback.from_user.id)
+    members_list.remove(deleted_member["username"])
+    updated_members_list = ' '.join(members_list)
+    await database.delete_member(room_id, updated_members_list)
+    await callback.message.delete()
+    await bot.answer_callback_query(callback_query_id=callback.id, text='Вы успешно покинули комнату!')
+    await state.finish()
+
+
+@dp.callback_query_handler(F.data.contains('disagree'), state=Room.exit_confirm)
+async def disagree_exit_room(callback: types.CallbackQuery, state: FSMContext):
+    '''Отказываемся от выхода из комнаты'''
+    room = await database.get_room(callback.data[-5:])
+    await bot.answer_callback_query(callback_query_id=callback.id, text='Рааазворот!')
+    exit_keyboard = InlineKeyboardMarkup()
+    exit_button = InlineKeyboardButton(text='Покинуть комнату', callback_data=f'exit {room["room_id"]}')
+    exit_keyboard.add(exit_button)
+    async with state.proxy() as data:
+        await callback.message.edit_text(text=data["room_text"], reply_markup=exit_keyboard)
+    await state.finish()
+
 
 @dp.callback_query_handler(F.data.contains('delete'))
 async def delete_room(callback: types.CallbackQuery):
     confirm_keyboard = InlineKeyboardMarkup()
-    agree_button = InlineKeyboardButton(text='Да',
-                                        callback_data=f'confirm_{callback.data[-5:]}')
-    disagree_button = InlineKeyboardButton(text='Нет',
-                                        callback_data=f'refuse_{callback.data[-5:]}')
+    agree_button = InlineKeyboardButton(text='Да', callback_data=f'confirm_{callback.data[-5:]}')
+    disagree_button = InlineKeyboardButton(text='Нет', callback_data=f'refuse_{callback.data[-5:]}')
     confirm_keyboard.add(agree_button, disagree_button)
-    await bot.answer_callback_query(callback_query_id=callback.id,
-                                    text='Удаление комнаты')
+    await bot.answer_callback_query(callback_query_id=callback.id, text='Удаление комнаты')
     await callback.message.edit_text(f'{callback.message.text}\n'
                                      f'----------------------------------------------\n'
                                      f'<b>Вы уверены, что хотите удалить данную комнату?</b>',
@@ -377,31 +415,26 @@ async def confirm_delete(callback: types.CallbackQuery):
     room = await database.get_room(callback.data[-5:])
     members = room["members"].split(' ')
     for member in members:
-        profile = await database.get_profile(member)
+        profile = await database.get_profile_by_username(member)
         if profile["member_id"] == room["admin"]:
             continue
         await bot.send_message(chat_id=profile["member_id"],
                          text=f'Упс! Кажется админ комнаты под названием <b>{room["room_name"]}</b> удалил её ❌. Игра не будет запущена и в следующий раз ты её не увидишь!',
                          parse_mode=types.ParseMode.HTML)
     await database.delete_room(callback.data[-5:])
-    await bot.answer_callback_query(callback_query_id=callback.id,
-                                    text='Комната удалена')
+    await bot.answer_callback_query(callback_query_id=callback.id, text='Комната удалена')
     await callback.message.delete()
 
 
 @dp.callback_query_handler(F.data.contains('refuse'))
 async def refuse_delete(callback: types.CallbackQuery):
     # await callback.message.edit_text(callback.message.text[:-93])
-    await bot.answer_callback_query(callback_query_id=callback.id,
-                                    text='Удаление отменено')
+    await bot.answer_callback_query(callback_query_id=callback.id, text='Удаление отменено')
     admin_keyboard = InlineKeyboardMarkup()
-    delete_button = InlineKeyboardButton(text='Удалить комнату',
-                                         callback_data=f'delete {callback.data[-5:]}')
-    shuffle_button = InlineKeyboardButton(text='Начать игру',
-                                          callback_data=f'shuffle {callback.data[-5:]}')
+    delete_button = InlineKeyboardButton(text='Удалить комнату', callback_data=f'delete {callback.data[-5:]}')
+    shuffle_button = InlineKeyboardButton(text='Начать игру', callback_data=f'shuffle {callback.data[-5:]}')
     admin_keyboard.add(delete_button, shuffle_button)
-    await callback.message.edit_text(text=callback.message.text[:-93],
-                                     reply_markup=admin_keyboard)
+    await callback.message.edit_text(text=callback.message.text[:-93], reply_markup=admin_keyboard)
 
 
 @dp.callback_query_handler(F.data.contains('shuffle'))
@@ -410,13 +443,10 @@ async def shuffle_room_confirm(callback: types.CallbackQuery):
     Если админ нажимает на запуск игры, бот спросит подтверждение
     '''
     confirm_keyboard = InlineKeyboardMarkup()
-    start_game_button = InlineKeyboardButton(text='Да',
-                                        callback_data=f'start_{callback.data[-5:]}')
-    stop_game_button = InlineKeyboardButton(text='Нет',
-                                           callback_data=f'stop_{callback.data[-5:]}')
+    start_game_button = InlineKeyboardButton(text='Да', callback_data=f'start_{callback.data[-5:]}')
+    stop_game_button = InlineKeyboardButton(text='Нет', callback_data=f'stop_{callback.data[-5:]}')
     confirm_keyboard.add(start_game_button, stop_game_button)
-    await bot.answer_callback_query(callback_query_id=callback.id,
-                                    text='АНЯ, ЗАПУСКАЙ')
+    await bot.answer_callback_query(callback_query_id=callback.id,text='АНЯ, ЗАПУСКАЙ')
     await callback.message.edit_text(f'{callback.message.text}\n'
                                      f'----------------------------------------------\n'
                                      f'<b>Вы уверены, что хотите начать ИГРУ?</b>',
@@ -432,14 +462,10 @@ async def shuffle_room(callback: types.CallbackQuery, state: FSMContext):
     '''
     room_id = callback.data[-5:]
     await database.update_state_started(room_id)
-    await bot.answer_callback_query(callback_query_id=callback.id,
-                                    text='Игроки перемешаны')
+    await bot.answer_callback_query(callback_query_id=callback.id, text='Игроки перемешаны')
     admin_keyboard = InlineKeyboardMarkup()
-    delete_button = InlineKeyboardButton(text='Удалить комнату',
-                                         callback_data=f'delete {room_id}')
+    delete_button = InlineKeyboardButton(text='Удалить комнату', callback_data=f'delete {room_id}')
     admin_keyboard.add(delete_button)
-    # await callback.message.edit_text(text=callback.message.text[:-83],
-    #                                  reply_markup=admin_keyboard)
     
     shuffled_players_dict = await database.shuffle_players(room_id) # получаем перемешанных распределенных игроков
     new_room = await database.get_room(room_id)
@@ -450,13 +476,12 @@ async def shuffle_room(callback: types.CallbackQuery, state: FSMContext):
 Игра {new_room["state"]}
 Код для подключения: {new_room["room_id"]}'''
 
-    await callback.message.edit_text(text=new_room_text,
-                                     reply_markup=admin_keyboard)
+    await callback.message.edit_text(text=new_room_text, reply_markup=admin_keyboard)
 
     for username in shuffled_players_dict:
         # проходимся по ним
-        player = await database.get_profile(username) # получаем игрока, которому отправляем сообщение
-        opponent = await database.get_profile(shuffled_players_dict[player['username']]) # и про которого отправляем
+        player = await database.get_profile_by_username(username) # получаем игрока, которому отправляем сообщение
+        opponent = await database.get_profile_by_username(shuffled_players_dict[player['username']]) # и про которого отправляем
         # ну и само сообщение
         await bot.send_message(chat_id=player['member_id'],
                                text='Привет! 👋\n'
@@ -475,7 +500,6 @@ async def stop_shuffle_room(callback: types.CallbackQuery, state: FSMContext):
     '''
     Если админ НЕ согласен на запуск комнаты
     '''
-    await callback.message.answer
 
     new_room = await database.get_room(callback.data[-5:])
     new_room_text = f'''Название: {new_room["room_name"]} 👑
@@ -485,17 +509,12 @@ async def stop_shuffle_room(callback: types.CallbackQuery, state: FSMContext):
 Код для подключения: {new_room["room_id"]}'''
 
     admin_keyboard = InlineKeyboardMarkup()
-    delete_button = InlineKeyboardButton(text='Удалить комнату',
-                                         callback_data=f'delete {callback.data[-5:]}')
-    shuffle_button = InlineKeyboardButton(text='Начать игру',
-                                          callback_data=f'shuffle {callback.data[-5:]}')
+    delete_button = InlineKeyboardButton(text='Удалить комнату', callback_data=f'delete {callback.data[-5:]}')
+    shuffle_button = InlineKeyboardButton(text='Начать игру', callback_data=f'shuffle {callback.data[-5:]}')
     admin_keyboard.add(delete_button, shuffle_button)
 
-    await callback.message.edit_text(text=new_room_text,
-                                     reply_markup=admin_keyboard)
+    await callback.message.edit_text(text=new_room_text, reply_markup=admin_keyboard)
     await state.finish()
 
 if __name__ == '__main__':
-    executor.start_polling(dp,
-                           skip_updates=True,
-                           on_startup=on_startup)
+    executor.start_polling(dp, skip_updates=True, on_startup=on_startup)
