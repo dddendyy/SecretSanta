@@ -13,6 +13,7 @@ class Room(StatesGroup):
     desc = State()
     confirm = State()
     exit_confirm = State()
+    kick_confirm = State()
     # validity = State()
 
 class Connect(StatesGroup):

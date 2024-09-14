@@ -327,16 +327,17 @@ async def my_rooms(message: types.Message):
     for room in my_rooms:
         if str(message.from_user.id) == room["admin"] and room["state"] != "запущена": # если админ 
 
-            room_text = f'''Название: {room["room_name"]} 👑
-{len(room["members"].split(" "))}/{room["member_count"]} участвуют
-Описание: {room["desc"]}
-Игра {room["state"]}
-Код для подключения: {room["room_id"]}'''
+            room_text = (f'Название: {room["room_name"]} 👑\n'
+                         f'{len(room["members"].split(" "))}/{room["member_count"]} участвуют\n'
+                         f'Описание: {room["desc"]}\n'
+                         f'Игра {room["state"]}\n'
+                         f'Код для подключения: {room["room_id"]}\n')
             
             admin_keyboard = InlineKeyboardMarkup()
             delete_button = InlineKeyboardButton(text='Удалить комнату', callback_data=f'delete {room["room_id"]}')
             shuffle_button = InlineKeyboardButton(text='Начать игру', callback_data=f'shuffle {room["room_id"]}')
-            admin_keyboard.add(delete_button, shuffle_button)
+            members_button = InlineKeyboardButton(text='Посмотреть список участников', callback_data=f'check members {room["room_id"]}')
+            admin_keyboard.add(delete_button, shuffle_button).add(members_button)
 
             await bot.send_message(chat_id=message.from_user.id,
                                    text=room_text,
@@ -344,28 +345,125 @@ async def my_rooms(message: types.Message):
             
         elif str(message.from_user.id) == room["admin"] and room["state"] == "запущена": # если админ, но комната запущена 
 
-            room_text = f'''Название: {room["room_name"]} 👑
-{len(room["members"].split(" "))}/{room["member_count"]} участвуют
-Описание: {room["desc"]}
-Игра {room["state"]}
-Код для подключения: {room["room_id"]}'''
-            await bot.send_message(chat_id=message.from_user.id,
-                                   text=room_text)
-            
-        elif str(message.from_user.id) != room["admin"]: # если не админ 
+            members_keyboard = InlineKeyboardMarkup()
+            members_button = InlineKeyboardButton(text='Посмотреть список участников', callback_data=f'check members {room["room_id"]}')
+            members_keyboard.add(members_button)
 
-            room_text = room_text = f'''Название: {room["room_name"]} 
-{len(room["members"].split(" "))}/{room["member_count"]} участвуют
-Описание: {room["desc"]}
-Игра {room["state"]}
-Код для подключения: {room["room_id"]}'''
+            room_text = (f'Название: {room["room_name"]} 👑\n'
+                         f'{len(room["members"].split(" "))}/{room["member_count"]} участвуют\n'
+                         f'Описание: {room["desc"]}\n'
+                         f'Игра {room["state"]}\n'
+                         f'Код для подключения: {room["room_id"]}\n')
+
+            await bot.send_message(chat_id=message.from_user.id,
+                                   text=room_text,
+                                   reply_markup=members_keyboard)
             
+        elif str(message.from_user.id) != room["admin"]: # если не админ
+
+            room_text = (f'Название: {room["room_name"]}\n'
+                         f'{len(room["members"].split(" "))}/{room["member_count"]} участвуют\n'
+                         f'Описание: {room["desc"]}\n'
+                         f'Игра {room["state"]}\n'
+                         f'Код для подключения: {room["room_id"]}\n')
+
             exit_keyboard = InlineKeyboardMarkup()
             exit_button = InlineKeyboardButton(text='Покинуть комнату', callback_data=f'exit {room["room_id"]}')
-            exit_keyboard.add(exit_button)
+            members_button = InlineKeyboardButton(text='Посмотреть список участников',
+                                                  callback_data=f'check members {room["room_id"]}')
+            exit_keyboard.add(exit_button).add(members_button)
             await bot.send_message(chat_id=message.from_user.id,
                                    text=room_text,
                                    reply_markup=exit_keyboard)
+
+
+@dp.callback_query_handler(F.data.contains('check members'))
+async def check_members_list(callback: types.CallbackQuery):
+    '''Обрабатываем вывод списка игроков в комнате'''
+    room_id = callback.data[-5:]
+    room = await database.get_room(room_id)
+    members_list = room['members'].split(' ')
+    await bot.answer_callback_query(callback_query_id=callback.id, text="Ну давай посмотрим, кто с нами играет ;)")
+    await bot.send_message(chat_id=callback.from_user.id, text=f'В комнате <b>"{room["room_name"]}"</b> состоят 👇',
+                           parse_mode=types.ParseMode.HTML)
+    for member in members_list:
+        if room['admin'] == str(callback.from_user.id):
+            player = await database.get_profile_by_username(member)
+            if room['admin'] == player['member_id']:
+                player['surname'] += ' 👑'
+            kick_keyboard = InlineKeyboardMarkup()
+            kick_button = InlineKeyboardButton(text='Исключить', callback_data=f'kick {player["member_id"]} {room_id}')
+            kick_keyboard.add(kick_button)
+
+            if player['member_id'] == str(callback.from_user.id):
+                await bot.send_message(chat_id=callback.from_user.id,
+                                       text=f'{player["name"]} {player["surname"]}\n'
+                                            f'@{player["username"]}')
+            else:
+                await bot.send_message(chat_id=callback.from_user.id,
+                                       text=f'{player["name"]} {player["surname"]}\n'
+                                            f'@{player["username"]}',
+                                       reply_markup=kick_keyboard)
+            continue
+
+        player = await database.get_profile_by_username(member)
+        await bot.send_message(chat_id=callback.from_user.id, text=f'{player["name"]} {player["surname"]}\n'
+                                                             f'@{player["username"]}')
+
+
+@dp.callback_query_handler(F.data.contains('kick'))
+async def confirm_kick(callback: types.CallbackQuery, state: FSMContext):
+    '''Спрашиваем у админа, точно ли мы будем выгонять игрока'''
+    async with state.proxy() as data:
+        data['member_id'] = str(callback.data).split(' ')[1]
+        data['room_id'] = str(callback.data).split(' ')[2]
+        data['member_text'] = callback.message.text
+
+    async with state.proxy() as data:
+        await callback.message.edit_text(text=callback.message.text )
+        confirm_keyboard = InlineKeyboardMarkup()
+        agree_button = InlineKeyboardButton(text='Да', callback_data=f' confirm_kick_{data["member_id"]}')
+        disagree_button = InlineKeyboardButton(text='Нет', callback_data=f' refuse_kick_{data["member_id"]}')
+        confirm_keyboard.add(agree_button, disagree_button)
+
+    await callback.message.edit_text(f'{callback.message.text}\n'
+                                     f'----------------------------------------------\n'
+                                     f'<b>Вы уверены, что хотите выгнать данного игрока?</b>',
+                                     reply_markup=confirm_keyboard,
+                                     parse_mode=types.ParseMode.HTML)
+    await Room.kick_confirm.set()
+
+
+@dp.callback_query_handler(F.data.contains(' confirm_kick_'), state=Room.kick_confirm)
+async def confirm_kick(callback: types.CallbackQuery, state: FSMContext):
+    '''Тут мы обрабатываем согласие на изгнание игрока'''
+    async with state.proxy() as data:
+        room = await database.get_room(data['room_id'])
+        members_list = room['members'].split(' ')
+        deleted_member = await database.get_profile_by_id(data['member_id'])
+        members_list.remove(deleted_member['username'])
+        updated_members_list = ' '.join(members_list)
+        await database.delete_member(data['room_id'], updated_members_list)
+        await bot.send_message(chat_id=data['member_id'],
+                               text=f'Ой-ёй... Кажется, администратор комнаты "<b>{room["room_name"]}</b>"'
+                                    f' исключил тебя из неё 😢\n',
+                               parse_mode=types.ParseMode.HTML)
+        await bot.send_sticker(chat_id=data['member_id'],
+                               sticker='CAACAgIAAxkBAAJ1Imblj9Ti_o85qsFPSlWYzSEfmtWaAAJ-EAACLzgAAUtI7H4VYC04vTYE')
+    await callback.message.delete()
+    await bot.answer_callback_query(callback_query_id=callback.id, text='До свидания, жулик!')
+    await state.finish()
+
+
+@dp.callback_query_handler(F.data.contains(' refuse_kick_'), state=Room.kick_confirm)
+async def refuse_kick(callback: types.CallbackQuery, state: FSMContext):
+    async with state.proxy() as data:
+        kick_keyboard = InlineKeyboardMarkup()
+        kick_button = InlineKeyboardButton(text='Исключить', callback_data=f'kick {data["member_id"]} {data["room_id"]}')
+        kick_keyboard.add(kick_button)
+        await callback.message.edit_text(data['member_text'], reply_markup=kick_keyboard)
+    await bot.answer_callback_query(callback_query_id=callback.id, text='Черт с тобой, золотая рыбка!')
+    await state.finish()
 
 
 @dp.callback_query_handler(F.data.contains('exit'))
